@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "rsms but better",
+  "version": "0.1.0",
+  "description": "A cleaner RSET student portal. Replaces RSMS pages with a redesigned UI that reads the same data.",
+  "icons": { "128": "icon.png" },
+  "action": {
+    "default_title": "rsms but better — click to toggle the original portal"
+  },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.rajagiritech.ac.in/stud/ktu/Student/*", "https://www.rajagiritech.ac.in/stud/KTU/Student/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles.css", "js/*.js"],
+      "matches": ["https://www.rajagiritech.ac.in/*"]
+    }
+  ],
+  "permissions": ["storage"]
+}
