@@ -153,6 +153,10 @@ button { font: inherit; color: inherit; }
 .stat .value { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; margin-top: 8px; font-variant-numeric: tabular-nums; }
 .stat .value small { font-size: 14px; font-weight: 500; color: var(--text-3); letter-spacing: 0; margin-left: 4px; }
 .stat .foot { margin-top: 6px; font-size: 12.5px; color: var(--text-2); }
+.stat.green { background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
+.stat.green .value, .stat.green .label, .stat.green .foot { color: var(--green); }
+.stat.red { background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
+.stat.red .value, .stat.red .label, .stat.red .foot { color: var(--red); }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

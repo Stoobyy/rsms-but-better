@@ -587,21 +587,19 @@ async function activity(page) {
         const groups = new Map();
         for (const e of entries) { const k = e.category || 'Uncategorised'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
         const approved = entries.filter((e) => /approved/i.test(e.status));
-        // Summary grid: one row per semester, one column per category, cells are approved points.
-        const cats = [...groups.keys()].sort((x, y) => x.localeCompare(y));
-        const sems = codes.map(semLabel);
-        const cell = (sem, k) => approvedPts(entries.filter((e) => e.sem === sem && (k == null || (e.category || 'Uncategorised') === k)));
+        // Points per activity category vs the required minimum (25 each, 20 for Leadership).
+        const REQUIRED = [
+          { match: /extracurricular/i, label: 'Extracurricular & National Initiatives', min: 25 },
+          { match: /professional/i, label: 'Professional & Co-curricular', min: 25 },
+          { match: /leadership/i, label: 'Leadership & Organizing', min: 20 },
+        ];
+        const catBlocks = REQUIRED.map((r) => {
+          const pts = approvedPts(entries.filter((e) => r.match.test(e.category || '')));
+          const ok = pts >= r.min;
+          return stat(r.label, pts, ok ? `minimum ${r.min} met` : `${r.min - pts} short of ${r.min}`, null, ok ? 'green' : 'red');
+        });
         body.innerHTML = html`
-          ${entries.length ? html`
-          <div class="card" style="margin-bottom:18px">
-            <div class="section-title" style="padding:18px 20px 0"><h2>Points by semester</h2><span class="hint">approved points only</span></div>
-            <div class="table-wrap"><table class="table">
-              <thead><tr><th>Semester</th>${cats.map((k) => html`<th class="num">${k}</th>`)}<th class="num">Total</th></tr></thead>
-              <tbody>
-                ${sems.map((sem) => html`<tr><td class="strong">${sem}</td>${cats.map((k) => html`<td class="num">${cell(sem, k) || '—'}</td>`)}<td class="num strong">${cell(sem) || '—'}</td></tr>`)}
-                <tr><td class="strong">Total</td>${cats.map((k) => html`<td class="num strong">${approvedPts(groups.get(k))}</td>`)}<td class="num strong">${approvedPts(entries)}</td></tr>
-              </tbody></table></div>
-          </div>` : ''}
+          <div class="grid c3" style="margin-bottom:14px">${catBlocks}</div>
           <div class="grid c3">${stat('Approved points', approvedPts(entries), `${approved.length} approved · all semesters`)}${stat('Submissions', entries.length, `${entries.length - approved.length} pending / other`)}${stat('Categories', groups.size, 'with submissions')}</div>
           ${entries.length ? [...groups.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([k, list]) => html`
             <div class="section">

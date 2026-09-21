@@ -87,8 +87,8 @@ export const select = (id, opts, value, { label } = {}) => html`
 export const seg = (id, opts, value) => html`
   <div class="seg" id="${id}">${opts.map((o) => html`<button data-v="${o.value}" class="${o.value === value ? 'active' : ''}">${o.label}</button>`)}</div>`;
 
-export const stat = (label, value, foot, unit) => html`
-  <div class="card stat"><div class="label">${label}</div><div class="value">${value}${unit ? html`<small>${unit}</small>` : ''}</div>${foot ? html`<div class="foot">${foot}</div>` : ''}</div>`;
+export const stat = (label, value, foot, unit, tone = '') => html`
+  <div class="card stat ${tone}"><div class="label">${label}</div><div class="value">${value}${unit ? html`<small>${unit}</small>` : ''}</div>${foot ? html`<div class="foot">${foot}</div>` : ''}</div>`;
 
 export const pill = (text, tone = '', extra = '') => html`<span class="pill ${tone} ${extra}">${text}</span>`;
 
