@@ -18,25 +18,21 @@ const LOGIN = 'https://www.rajagiritech.ac.in/stud/KTU/Student/studentlogin/logi
   };
   if (!location.hash && ROUTE[file]) history.replaceState(null, '', `#/${ROUTE[file]}`);
 
-  window.stop();
+  // Start a brand-new document (open() aborts the portal page's parser and clears it). Don't
+  // window.stop() first — open() is a no-op on a stopped document — and don't gut the aborted
+  // document in place, which leaves Chrome render-blocked and never paints.
   const url = (p) => chrome.runtime.getURL(p);
-  document.documentElement.innerHTML = `
-    <head>
+  document.open();
+  document.write(`<!doctype html><html lang="en"><head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
       <meta name="color-scheme" content="light dark">
       <title>rsms but better</title>
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
       <link rel="stylesheet" href="${url('styles.css')}">
-    </head>
-    <body><div id="app" class="app"></div></body>`;
-
-  const s = document.createElement('script');
-  s.type = 'module';
-  s.src = url('js/app.js');
-  document.body.appendChild(s);
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    </head><body><div id="app" class="app"></div><script type="module" src="${url('js/app.js')}"></script></body></html>`);
+  document.close();
 
   // "Original portal" in the remake: switch the extension off and go to the portal's login page.
   window.addEventListener('message', async (e) => {

@@ -576,11 +576,17 @@ async function activity(page) {
       if (all) {
         // Every semester × every category, a few requests at a time so the portal isn't hammered.
         const jobs = codes.flatMap((c) => api.ACTIVITY_CATEGORIES.map((cat) => ({ c, cat })));
-        const entries = [];
+        const seen = new Set(), entries = [];
         await Promise.all(Array.from({ length: 6 }, async () => {
           for (let j; (j = jobs.shift());) {
             const r = await cached(`act:${j.c.value}:${j.cat.id}`, () => api.activity(j.c.value, j.cat.id));
-            entries.push(...r.entries.map((e) => ({ ...e, sem: semLabel(j.c), catLabel: j.cat.label })));
+            for (const e of r.entries) {
+              // The portal sometimes returns the same submission under more than one class code — count it once.
+              const key = [e.activity, e.event, e.fest, e.start, e.end, e.institution, e.certificate].join('|');
+              if (seen.has(key)) continue;
+              seen.add(key);
+              entries.push({ ...e, sem: semLabel(j.c), catLabel: j.cat.label });
+            }
           }
         }));
         const approvedPts = (list) => list.filter((e) => /approved/i.test(e.status)).reduce((n, e) => n + (e.points || 0), 0);
@@ -598,8 +604,11 @@ async function activity(page) {
           const ok = pts >= r.min;
           return stat(r.label, pts, ok ? `minimum ${r.min} met` : `${r.min - pts} short of ${r.min}`, null, ok ? 'green' : 'red');
         });
+        // Approved entries whose category label matches none of the three — shown so the blocks always add up to the total.
+        const otherPts = approvedPts(entries.filter((e) => !REQUIRED.some((r) => r.match.test(e.category || ''))));
+        if (otherPts) catBlocks.push(stat('Other', otherPts, 'no category on the portal'));
         body.innerHTML = html`
-          <div class="grid c3" style="margin-bottom:14px">${catBlocks}</div>
+          <div class="grid ${catBlocks.length > 3 ? 'c4' : 'c3'}" style="margin-bottom:14px">${catBlocks}</div>
           <div class="grid c3">${stat('Approved points', approvedPts(entries), `${approved.length} approved · all semesters`)}${stat('Submissions', entries.length, `${entries.length - approved.length} pending / other`)}${stat('Categories', groups.size, 'with submissions')}</div>
           ${entries.length ? [...groups.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([k, list]) => html`
             <div class="section">
