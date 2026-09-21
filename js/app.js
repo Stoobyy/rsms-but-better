@@ -106,7 +106,7 @@ function shell(active, content) {
         <div class="brand"><span class="mark">R</span>rsms <em>but better</em></div>
         <nav class="nav">${NAV.map((n) => (n.group ? html`<div class="group">${n.group}</div>` : navLink(n)))}</nav>
         <div class="spacer"></div>
-        <a class="btn ghost sm" style="justify-content:flex-start;margin-bottom:8px" href="Home.asp?original=1">Original portal ↗</a>
+        <a class="btn ghost sm" style="justify-content:flex-start;margin-bottom:8px" href="#" onclick="window.postMessage({type:'rsms:original'},'*');return false">Original portal ↗</a>
         <div class="userchip">
           ${me?.photo ? html`<img class="avatar" src="${me.photo}" alt="" />` : html`<div class="avatar"></div>`}
           <div class="who"><div class="name">${titleCase(me?.name)}</div><div class="sub">${me?.uid || 'Student'}</div></div>

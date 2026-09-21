@@ -1,16 +1,11 @@
 // Content script (document_start). Halts the original RSMS page and mounts the remake in its
 // place. Runs on the portal's own origin, so the app's fetch() calls carry the session cookies.
-(async () => {
-  const path = location.pathname.toLowerCase();
-  const file = path.split('/').pop();
+const LOGIN = 'https://www.rajagiritech.ac.in/stud/KTU/Student/studentlogin/login.php';
 
-  // Pages we redesign. Anything else (receipts, PDFs, Logout.asp, form handlers…) is left alone.
-  const PAGES = new Set([
-    '', 'home.asp', 'index.asp', 'leave.asp', 'mark.asp', 'mark_sessional.asp', 'mark_internal_report.asp',
-    'mark_rexa.asp', 'marks_rexa.asp', 'academic_calendar.asp', 'activity.asp', 'notice.asp',
-    'feebook.asp', 'certificate.asp', 'fileup.php', 'announcement_list.php', 'login.php',
-  ]);
-  if (!PAGES.has(file)) return;
+(async () => {
+  const file = location.pathname.toLowerCase().split('/').pop();
+  // Receipts open in a new tab from the remake's Fees page — leave them as the portal renders them.
+  if (file === 'receipt.asp') return;
   if (new URLSearchParams(location.search).has('original')) return;
   const { disabled } = await chrome.storage.local.get('disabled');
   if (disabled) return;
@@ -42,4 +37,12 @@
   s.type = 'module';
   s.src = url('js/app.js');
   document.body.appendChild(s);
+
+  // "Original portal" in the remake: switch the extension off and go to the portal's login page.
+  window.addEventListener('message', async (e) => {
+    if (e.source !== window || e.data?.type !== 'rsms:original') return;
+    await chrome.storage.local.set({ disabled: true });
+    chrome.runtime.sendMessage({ type: 'badge', disabled: true });
+    location.href = LOGIN;
+  });
 })();
