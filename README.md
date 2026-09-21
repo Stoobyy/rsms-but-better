@@ -7,7 +7,7 @@ Sign in with just your UID (the part before `@rajagiri.edu.in`).
 
 ## Install
 
-1. Download this folder (or clone the repo).
+1. Download the release (or clone the repo).
 2. Open `chrome://extensions` in Chrome.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and select the folder.
