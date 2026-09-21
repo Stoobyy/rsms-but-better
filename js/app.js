@@ -161,6 +161,16 @@ const titleCase = (s) => String(s || '').toLowerCase().replace(/\b\w/g, (c) => c
 const semLabel = (c) => (c.sem ? `Semester ${c.sem}` : c.value);
 const codeOptions = (codes) => codes.map((c) => ({ value: c.value, label: `${semLabel(c)} · ${c.value}` }));
 const pref = (k, v) => (v === undefined ? sessionStorage.getItem('rsms.' + k) : sessionStorage.setItem('rsms.' + k, v));
+// Short subject code (e.g. CO300A) → course name, taken from the legend on the internal-marks pages.
+const subjectNames = (code) => cached(`names:${code}`, async () => {
+  const pick = (d) => Object.fromEntries(d.subjects.filter((s) => s.name).map((s) => [s.code.replace(/^.*?\//, ''), s.name]));
+  let names = pick(await cached(`sess:${code}`, () => api.sessional(code)));
+  if (!Object.keys(names).length) {
+    const types = await cached(`exams:${code}`, () => api.examTypes(code));
+    if (types[0]) names = pick(await cached(`marks:${code}:${types[0].value}`, () => api.marks(code, types[0].value)));
+  }
+  return names;
+});
 
 /* ============================================================
    Overview
@@ -277,7 +287,7 @@ async function attendance(page) {
     });
     page.querySelector('#code').addEventListener('change', (e) => { code = e.target.value; pref('att.code', code); draw(); });
     try {
-      const a = await cached(`att:${code}`, () => api.attendance(code));
+      const [a, names] = await Promise.all([cached(`att:${code}`, () => api.attendance(code)), subjectNames(code).catch(() => ({}))]);
       const counts = {}, bySubject = {};
       for (const d of a.days) for (const p of d.periods) {
         counts[p.category] = (counts[p.category] || 0) + 1;
@@ -298,7 +308,7 @@ async function attendance(page) {
             ${[...a.days].reverse().map((d) => { const f = fmt.date(d.date); return html`
               <div class="att-day">
                 <div class="date">${f.day} ${f.month}<small>${f.dow}</small></div>
-                <div class="periods">${d.periods.map((p) => html`<span class="period ${attClass(p.category)}" title="${p.category} · ${p.subject}"><i>${p.period}</i>${p.shortCode}</span>`)}</div>
+                <div class="periods">${d.periods.map((p) => html`<span class="period ${attClass(p.category)}" title="${p.category} · ${names[p.shortCode] || p.subject}"><i>${p.period}</i>${p.shortCode}</span>`)}</div>
               </div>`; })}
           </div>
           <div class="card">
@@ -306,7 +316,7 @@ async function attendance(page) {
             <div class="table-wrap"><table class="table">
               <thead><tr><th>Subject</th><th class="num">Leave</th><th class="num">Approved</th><th class="num">Duty</th><th class="num">Total</th></tr></thead>
               <tbody>${Object.entries(bySubject).sort((x, y) => y[1].total - x[1].total).map(([s, v]) => html`
-                <tr><td class="strong">${s}</td><td class="num">${v['Leave'] || 0}</td><td class="num">${v['Approved Leave'] || 0}</td><td class="num">${(v['Duty Leave'] || 0) + (v['Duty Attendance'] || 0)}</td><td class="num strong">${v.total}</td></tr>`)}
+                <tr><td>${names[s] ? html`<div class="strong">${names[s]}</div><div class="dim small">${s}</div>` : html`<span class="strong">${s}</span>`}</td><td class="num">${v['Leave'] || 0}</td><td class="num">${v['Approved Leave'] || 0}</td><td class="num">${(v['Duty Leave'] || 0) + (v['Duty Attendance'] || 0)}</td><td class="num strong">${v.total}</td></tr>`)}
               </tbody></table></div>
             <div style="padding:14px 20px" class="legend">
               <span style="--c:var(--red)">Leave</span><span style="--c:var(--green)">Approved leave</span><span style="--c:var(--amber)">Duty leave</span><span style="--c:var(--blue)">Duty attendance</span>
@@ -547,7 +557,7 @@ async function activity(page) {
         ${pill(e.status || 'Pending', /approved/i.test(e.status) ? 'green' : /reject/i.test(e.status) ? 'red' : 'amber')}
         ${e.level ? pill(e.level) : ''}${e.prize ? pill(e.prize) : ''}
         ${e.start ? pill(e.start === e.end || !e.end ? e.start : `${e.start} → ${e.end}`) : ''}
-        ${e.category ? pill(e.category, 'accent') : ''}
+        ${e.sem ? pill(e.sem) : ''}${e.category ? pill(e.category, 'accent') : ''}
         ${e.certificate ? html`<a class="pill blue" href="${e.certificate}" target="_blank" rel="noopener">Certificate ↗</a>` : ''}
       </div>
     </div>`;
@@ -557,20 +567,47 @@ async function activity(page) {
       subtitle: 'Submissions and faculty-approved points, by semester and category.',
       controls: html`${select('code', codeOptions(codes), code)}
         ${select('cat', api.ACTIVITY_CATEGORIES.map((c) => ({ value: String(c.id), label: c.label })), String(cat))}
-        <button class="btn sm ${all ? 'primary' : ''}" id="all">${all ? 'Showing all categories' : 'Load all categories'}</button>`,
+        <button class="btn sm ${all ? 'primary' : ''}" id="all">${all ? 'Showing all points' : 'Display all points'}</button>`,
     });
     page.querySelector('#code').addEventListener('change', (e) => { code = e.target.value; pref('act.code', code); draw(); });
     page.querySelector('#cat').addEventListener('change', (e) => { cat = Number(e.target.value); pref('act.cat', cat); all = false; draw(); });
     page.querySelector('#all').addEventListener('click', () => { all = !all; draw(); });
     try {
       if (all) {
-        const lists = await Promise.all(api.ACTIVITY_CATEGORIES.map((c) => cached(`act:${code}:${c.id}`, () => api.activity(code, c.id)).then((r) => ({ cat: c, entries: r.entries }))));
-        const entries = lists.flatMap((l) => l.entries.map((e) => ({ ...e, catLabel: l.cat.label })));
+        // Every semester × every category, a few requests at a time so the portal isn't hammered.
+        const jobs = codes.flatMap((c) => api.ACTIVITY_CATEGORIES.map((cat) => ({ c, cat })));
+        const entries = [];
+        await Promise.all(Array.from({ length: 6 }, async () => {
+          for (let j; (j = jobs.shift());) {
+            const r = await cached(`act:${j.c.value}:${j.cat.id}`, () => api.activity(j.c.value, j.cat.id));
+            entries.push(...r.entries.map((e) => ({ ...e, sem: semLabel(j.c), catLabel: j.cat.label })));
+          }
+        }));
+        const approvedPts = (list) => list.filter((e) => /approved/i.test(e.status)).reduce((n, e) => n + (e.points || 0), 0);
+        const groups = new Map();
+        for (const e of entries) { const k = e.category || 'Uncategorised'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); }
         const approved = entries.filter((e) => /approved/i.test(e.status));
-        const pts = approved.reduce((n, e) => n + (e.points || 0), 0);
+        // Summary grid: one row per semester, one column per category, cells are approved points.
+        const cats = [...groups.keys()].sort((x, y) => x.localeCompare(y));
+        const sems = codes.map(semLabel);
+        const cell = (sem, k) => approvedPts(entries.filter((e) => e.sem === sem && (k == null || (e.category || 'Uncategorised') === k)));
         body.innerHTML = html`
-          <div class="grid c3">${stat('Approved points', pts, `${approved.length} approved · ${semLabel(codes.find((c) => c.value === code) || { value: code })}`)}${stat('Submissions', entries.length, `${entries.length - approved.length} pending / other`)}${stat('Categories used', lists.filter((l) => l.entries.length).length, 'of 17')}</div>
-          <div class="section grid c2">${entries.length ? entries.map(card) : empty('No submissions', 'Nothing has been submitted in any category.')}</div>`.__raw;
+          ${entries.length ? html`
+          <div class="card" style="margin-bottom:18px">
+            <div class="section-title" style="padding:18px 20px 0"><h2>Points by semester</h2><span class="hint">approved points only</span></div>
+            <div class="table-wrap"><table class="table">
+              <thead><tr><th>Semester</th>${cats.map((k) => html`<th class="num">${k}</th>`)}<th class="num">Total</th></tr></thead>
+              <tbody>
+                ${sems.map((sem) => html`<tr><td class="strong">${sem}</td>${cats.map((k) => html`<td class="num">${cell(sem, k) || '—'}</td>`)}<td class="num strong">${cell(sem) || '—'}</td></tr>`)}
+                <tr><td class="strong">Total</td>${cats.map((k) => html`<td class="num strong">${approvedPts(groups.get(k))}</td>`)}<td class="num strong">${approvedPts(entries)}</td></tr>
+              </tbody></table></div>
+          </div>` : ''}
+          <div class="grid c3">${stat('Approved points', approvedPts(entries), `${approved.length} approved · all semesters`)}${stat('Submissions', entries.length, `${entries.length - approved.length} pending / other`)}${stat('Categories', groups.size, 'with submissions')}</div>
+          ${entries.length ? [...groups.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([k, list]) => html`
+            <div class="section">
+              <div class="section-title"><h2>${k}</h2><span class="hint">${approvedPts(list)} approved points · ${list.length} submission${list.length === 1 ? '' : 's'}</span></div>
+              <div class="grid c2">${list.map(card)}</div>
+            </div>`) : html`<div class="section">${empty('No submissions', 'Nothing has been submitted in any category across any semester.')}</div>`}`.__raw;
       } else {
         const r = await cached(`act:${code}:${cat}`, () => api.activity(code, cat));
         const pts = r.entries.filter((e) => /approved/i.test(e.status)).reduce((n, e) => n + (e.points || 0), 0);
